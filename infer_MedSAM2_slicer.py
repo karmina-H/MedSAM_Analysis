@@ -23,9 +23,12 @@ torch.cuda.manual_seed(2024)
 np.random.seed(2024)
 
 def resize_rgb(array, image_size):
+    # 입력데이터 크기가져오는데 슬라이스 개수인 d만 가져옴
     d, h, w = array.shape[:3]
+    # resize할 크기의 np.zero만들고
     resized_array = np.zeros((d, 3, image_size, image_size))
     
+    # 슬라이스 하나씩 돌면서 이미지 resize
     for i in range(d):
         img_rgb = Image.fromarray(array[i].astype(np.uint8))
         img_resized = img_rgb.resize((image_size, image_size))
@@ -34,6 +37,7 @@ def resize_rgb(array, image_size):
     
     return resized_array
 
+# 입력이 grayscale일 경우 rgb로 바꿔주는 함수
 def grayscale2rgb(array):
     if len(array.shape) > 3:
         return array
@@ -50,35 +54,50 @@ def grayscale2rgb(array):
 @torch.inference_mode()
 def infer_3d(predictor, img_npz_file, gts_file, propagate, model_cfg, pred_save_dir):
     print(f'infering {img_npz_file}')
-    npz_name = basename(img_npz_file)
-    npz_data = np.load(img_npz_file, 'r', allow_pickle=True)
+    npz_name = basename(img_npz_file) # input한 파일이름
+    npz_data = np.load(img_npz_file, 'r', allow_pickle=True) # input데이터로 읽은 데이터 변수에 저장 
+    # gts는 GT데이터 라벨 -> 근데 이거 계속 없는게 DEFAULT인듯
     gts = np.load(gts_file, 'r', allow_pickle=True)['segs'] if gts_file != 'X' else None
+    # 실제 데이터 = img_3D
     img_3D = npz_data['imgs']  # (D, H, W)
+    # 픽셀크기 256보다크면 정규화
     if np.max(img_3D) >= 256:
         img_3D = (img_3D - np.min(img_3D)) / (np.max(img_3D) - np.min(img_3D)) * 255
         img_3D = img_3D.astype(np.int16)
     # assert np.max(img_3D) < 256, f'input data should be in range [0, 255], but got {np.unique(img_3D)}'
+    # grayscale을 rgb로 바꿔주고
     img_3D = grayscale2rgb(img_3D)
     D, H, W = img_3D.shape[:3]
-    segs_3D = np.zeros(img_3D.shape[:3], dtype=np.uint8)
-    boxes_3D = npz_data['boxes']  # (D, num_boxes, 4)
-    z_range = npz_data['z_range'] # (z_min, z_max, slice_idx)
+    segs_3D = np.zeros(img_3D.shape[:3], dtype=np.uint8) # segs_3D = segmentation결과 저장용 변수
+    boxes_3D = npz_data['boxes']  # (D, num_boxes, 4) -> 사용자가 설정한 경계박스
+    #################################
+    #이거이해안감
+    z_range = npz_data['z_range'] # (z_min, z_max, slice_idx) -> 현재 사용자가 선택한 슬라이스
+    # 원본이미지의 높이와 너비저장(복원할떄 사용)
     video_height = img_3D.shape[1]
     video_width = img_3D.shape[2]
+
     with open(join('sam2', model_cfg), 'r') as yaml_file:
         yaml_data = yaml.safe_load(yaml_file)
         image_size = yaml_data['model']['image_size']
+    
+    # 이미지 resize
     img_resized = resize_rgb(img_3D, image_size)
     img_resized = img_resized / 255.0
+    # 딥러닝 모델에 넘겨주어야하니 cpu에있는 넘파이배열을 gpu텐서로
     img_resized = torch.from_numpy(img_resized).cuda()
+    # medsam2가 학습했던 데이터셋의 모든 이미지의 평균과 표준편차로, input을 이분포로 맞춰주기 위해서 사용 
     img_mean=(0.485, 0.456, 0.406)
     img_std=(0.229, 0.224, 0.225)
     img_mean = torch.tensor(img_mean, dtype=torch.float32)[:, None, None].cuda()
     img_std = torch.tensor(img_std, dtype=torch.float32)[:, None, None].cuda()
+    # input이미지를 평균과 표준편차로 정규화
     img_resized -= img_mean
     img_resized /= img_std
     z_mids = []
     
+    #################################
+    #이거이해안감
     z_indices, slice_idx = z_range[:2], z_range[2]
 
     if not propagate:

@@ -5,18 +5,19 @@ import subprocess
 import os
 from infer_MedSAM2_slicer import perform_inference, improve_inference
 
-app = Flask(__name__)
+app = Flask(__name__) # default로 Flask앱생성
 
-predictor_state = {}
+predictor_state = {} # 예측한 segmentation
 
 @app.route('/run_script', methods=['POST'])
 def run_script():
-    input_name = request.form.get('input')
-    gts_name = request.form.get('gts')
-    propagate = request.form.get('propagate') in ['y', 'Y']
-    checkpoint = 'checkpoints/%s'%(request.form.get('checkpoint'),)
-    cfg = request.form.get('config')
+    input_name = request.form.get('input') # 입력이미지의 파일경로
+    gts_name = request.form.get('gts') # GT 라벨경로
+    propagate = request.form.get('propagate') in ['y', 'Y'] # Propagation여부(슬라이스하나만 분할할지 아니면 여러개다할지)
+    checkpoint = 'checkpoints/%s'%(request.form.get('checkpoint'),) # MedSAM 체크포인트
+    cfg = request.form.get('config') # 모델의 설정파일경로
 
+    # INFERENCE
     predictor, inference_state = perform_inference(checkpoint, cfg, input_name, gts_name, propagate, pred_save_dir='data/video/segs_tiny')
     predictor_state['predictor'] = predictor
     predictor_state['inference_state'] = inference_state
@@ -51,10 +52,12 @@ def run_script():
     # else:
     #     return f'Error: {stderr.decode("utf-8")}'
 
+# 이거 refine하고 다시 추론할때 이거씀
 @app.route('/improve', methods=['POST'])
 def improve():
-    input_name = request.form.get('input')
+    input_name = request.form.get('input') # input가져오고
 
+    # 그전에 예측한 상태인 predictor_state를 인자로 줘서 결과 반환받음
     predictor, inference_state = improve_inference(input_name, pred_save_dir='data/video/segs_tiny', predictor_state=predictor_state)
     predictor_state['predictor'] = predictor
     predictor_state['inference_state'] = inference_state
