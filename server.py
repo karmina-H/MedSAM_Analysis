@@ -13,6 +13,7 @@ predictor_state = {} # 예측한 segmentation
 def run_script():
     input_name = request.form.get('input') # 입력이미지의 파일경로
     gts_name = request.form.get('gts') # GT 라벨경로
+    print(f"gts_name: {gts_name}") # 이거 Default로 X로 정해져 있음.
     propagate = request.form.get('propagate') in ['y', 'Y'] # Propagation여부(슬라이스하나만 분할할지 아니면 여러개다할지)
     checkpoint = 'checkpoints/%s'%(request.form.get('checkpoint'),) # MedSAM 체크포인트
     cfg = request.form.get('config') # 모델의 설정파일경로
